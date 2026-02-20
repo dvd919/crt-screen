@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useCallback } from "react"
 
+interface Ripple {
+  x: number
+  y: number
+  t: number
+  maxT: number
+}
+
 /* ── types ── */
 interface MatrixColumn {
   x: number
@@ -73,6 +80,7 @@ const FRAGMENT_TEXTS = [
 export function CyberBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mouseRef = useRef({ x: -1000, y: -1000 })
+  const ripplesRef = useRef<Ripple[]>([])
   const animFrameRef = useRef<number>(0)
   const timeRef = useRef(0)
   const isMobileRef = useRef(false)
@@ -152,6 +160,10 @@ export function CyberBackground() {
       mouseRef.current = { x: e.clientX, y: e.clientY }
     }
 
+    const handleClick = (e: MouseEvent) => {
+      ripplesRef.current.push({ x: e.clientX, y: e.clientY, t: 0, maxT: 800 })
+    }
+
     const initSystems = () => {
       const w = window.innerWidth
       const h = window.innerHeight
@@ -178,69 +190,141 @@ export function CyberBackground() {
     handleResize()
     window.addEventListener("resize", handleResize)
     window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("click", handleClick)
 
     /* ─── LAYER 1: Generative Grid ─── */
     const drawGrid = (w: number, h: number, t: number) => {
-      const spacing = isMobileRef.current ? 70 : 50
+      const nCols = isMobileRef.current ? 10 : 18
+      const nRows = Math.round(nCols * h / w)
       const mobile = isMobileRef.current
+      const mx = mouseRef.current.x
+      const my = mouseRef.current.y
+      const curvK = 0.12   // outward bow strength
+      const blend = 0.5    // 0 = uniform spacing, 1 = full smoothstep (center-biggest)
+
+      // Non-uniform positions: smoothstep remap makes center cells wider
+      const genPos = (n: number, size: number): number[] => {
+        const arr: number[] = []
+        for (let i = 0; i <= n; i++) {
+          const u = i / n
+          const s = u * u * (3 - 2 * u)          // smoothstep
+          arr.push((u * (1 - blend) + s * blend) * size)
+        }
+        return arr
+      }
+
+      const xs = genPos(nCols, w)
+      const ys = genPos(nRows, h)
+      const avgCellW = w / nCols
+      const avgCellH = h / nRows
 
       ctx.save()
 
-      // Main grid lines
-      for (let x = 0; x < w; x += spacing) {
-        // Gentle sine wave distortion on verticals
-        const waveAmp = mobile ? 0 : Math.sin(t * 0.0004 + x * 0.005) * 3
-        const pulse = Math.sin(t * 0.001 + x * 0.01) * 0.5 + 0.5
-        const alpha = 0.015 + pulse * 0.012
-
-        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`
-        ctx.lineWidth = 0.5
+      // Ripples (screen space)
+      ripplesRef.current = ripplesRef.current.filter(r => r.t < r.maxT)
+      for (const r of ripplesRef.current) {
+        r.t += 16
+        const progress = r.t / r.maxT
+        const radius = progress * w * 0.45
         ctx.beginPath()
-        ctx.moveTo(x + waveAmp, 0)
+        ctx.arc(r.x, r.y, radius, 0, Math.PI * 2)
+        ctx.strokeStyle = `rgba(0, 0, 0, ${(1 - progress) * 0.25})`
+        ctx.lineWidth = 0.5
+        ctx.stroke()
+        if (progress > 0.1) {
+          ctx.beginPath()
+          ctx.arc(r.x, r.y, (progress - 0.1) * w * 0.45, 0, Math.PI * 2)
+          ctx.strokeStyle = `rgba(0, 0, 0, ${(1 - progress) * 0.1})`
+          ctx.lineWidth = 0.5
+          ctx.stroke()
+        }
+      }
 
-        if (!mobile) {
-          // Draw with subtle curves
-          for (let y = 0; y < h; y += 40) {
-            const offset = Math.sin(t * 0.0003 + y * 0.008 + x * 0.003) * 2.5
-            ctx.lineTo(x + offset, y)
+      // Vertical lines
+      // Each line bows outward (away from center) using sin curve — endpoints stay locked to screen top/bottom
+      for (const gx of xs) {
+        const nx = (gx / w - 0.5) * 2   // -1 to 1
+        const distToMouse = Math.abs(mx - gx)
+        const nearMouse = !mobile && distToMouse < avgCellW * 2
+        const proximity = nearMouse ? Math.max(0, 1 - distToMouse / (avgCellW * 2)) : 0
+
+        let rippleBoost = 0
+        for (const r of ripplesRef.current) {
+          const rp = r.t / r.maxT
+          if (Math.abs(Math.abs(r.x - gx) - rp * w * 0.45) < avgCellW) {
+            rippleBoost = Math.max(rippleBoost, (1 - rp) * 0.15)
           }
-        } else {
-          ctx.lineTo(x, h)
+        }
+
+        const pulse = Math.sin(t * 0.001 + gx * 0.01) * 0.5 + 0.5
+        const alpha = 0.08 + pulse * 0.04 + proximity * 0.25 + rippleBoost
+        ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`
+        ctx.lineWidth = nearMouse ? 0.5 + proximity * 0.8 : 0.5
+        ctx.beginPath()
+        let first = true
+        for (let y = 0; y <= h; y += 4) {
+          // sin bow: 0 at top & bottom edges, max outward at vertical center
+          const bow = curvK * nx * Math.sin(Math.PI * y / h)
+          const sx = gx + bow * w * 0.5
+          if (first) { ctx.moveTo(sx, y); first = false }
+          else ctx.lineTo(sx, y)
         }
         ctx.stroke()
       }
 
-      for (let y = 0; y < h; y += spacing) {
-        const waveAmp = mobile ? 0 : Math.cos(t * 0.0003 + y * 0.004) * 2
-        const pulse = Math.sin(t * 0.0008 + y * 0.008) * 0.5 + 0.5
-        const alpha = 0.012 + pulse * 0.01
+      // Horizontal lines
+      for (const gy of ys) {
+        const ny = (gy / h - 0.5) * 2
+        const distToMouse = Math.abs(my - gy)
+        const nearMouse = !mobile && distToMouse < avgCellH * 2
+        const proximity = nearMouse ? Math.max(0, 1 - distToMouse / (avgCellH * 2)) : 0
 
-        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`
-        ctx.lineWidth = 0.5
-        ctx.beginPath()
-        ctx.moveTo(0, y + waveAmp)
-
-        if (!mobile) {
-          for (let x = 0; x < w; x += 40) {
-            const offset = Math.cos(t * 0.0004 + x * 0.006 + y * 0.002) * 2
-            ctx.lineTo(x, y + offset)
+        let rippleBoost = 0
+        for (const r of ripplesRef.current) {
+          const rp = r.t / r.maxT
+          if (Math.abs(Math.abs(r.y - gy) - rp * w * 0.45) < avgCellH) {
+            rippleBoost = Math.max(rippleBoost, (1 - rp) * 0.15)
           }
-        } else {
-          ctx.lineTo(w, y)
+        }
+
+        const pulse = Math.sin(t * 0.0008 + gy * 0.008) * 0.5 + 0.5
+        const alpha = 0.08 + pulse * 0.04 + proximity * 0.25 + rippleBoost
+        ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`
+        ctx.lineWidth = nearMouse ? 0.5 + proximity * 0.8 : 0.5
+        ctx.beginPath()
+        let first = true
+        for (let x = 0; x <= w; x += 4) {
+          // sin bow: 0 at left & right edges, max outward at horizontal center
+          const bow = curvK * ny * Math.sin(Math.PI * x / w)
+          const sy = gy + bow * h * 0.5
+          if (first) { ctx.moveTo(x, sy); first = false }
+          else ctx.lineTo(x, sy)
         }
         ctx.stroke()
       }
 
-      // Grid intersection highlights
+      // Intersection highlights at warped positions
       if (!mobile) {
-        for (let x = 0; x < w; x += spacing) {
-          for (let y = 0; y < h; y += spacing) {
-            const dist = Math.hypot(mouseRef.current.x - x, mouseRef.current.y - y)
-            if (dist < 180) {
-              const proximity = 1 - dist / 180
-              ctx.fillStyle = `rgba(255, 255, 255, ${proximity * 0.08})`
+        for (const gx of xs) {
+          for (const gy of ys) {
+            const nx = (gx / w - 0.5) * 2
+            const ny = (gy / h - 0.5) * 2
+            const ix = gx + curvK * nx * Math.sin(Math.PI * gy / h) * w * 0.5
+            const iy = gy + curvK * ny * Math.sin(Math.PI * gx / w) * h * 0.5
+            const dist = Math.hypot(mx - ix, my - iy)
+            let rippleGlow = 0
+            for (const r of ripplesRef.current) {
+              const rp = r.t / r.maxT
+              if (Math.abs(Math.hypot(r.x - ix, r.y - iy) - rp * w * 0.45) < avgCellW * 0.8) {
+                rippleGlow = Math.max(rippleGlow, (1 - rp) * 0.25)
+              }
+            }
+            if (dist < 200 || rippleGlow > 0) {
+              const proximity = dist < 200 ? 1 - dist / 200 : 0
+              const glow = Math.max(proximity, rippleGlow)
+              ctx.fillStyle = `rgba(0, 0, 0, ${glow * 0.35})`
               ctx.beginPath()
-              ctx.arc(x, y, 1.5 + proximity * 2, 0, Math.PI * 2)
+              ctx.arc(ix, iy, 1 + glow * 3.5, 0, Math.PI * 2)
               ctx.fill()
             }
           }
@@ -289,8 +373,8 @@ export function CyberBackground() {
 
           ctx.font = `${col.fontSize}px "Geist Mono", monospace`
           ctx.fillStyle = isHead
-            ? `rgba(220, 255, 220, ${Math.min(alpha, 0.35)})`
-            : `rgba(255, 255, 255, ${Math.min(alpha, 0.15)})`
+            ? `rgba(0, 60, 0, ${Math.min(alpha, 0.35)})`
+            : `rgba(0, 0, 0, ${Math.min(alpha, 0.15)})`
           ctx.fillText(char, col.x, charY)
         })
       })
@@ -329,9 +413,9 @@ export function CyberBackground() {
         ctx.closePath()
 
         const grad = ctx.createLinearGradient(0, baseY - amplitude, 0, baseY + amplitude * 3)
-        grad.addColorStop(0, `rgba(200, 220, 255, ${alpha * 1.5})`)
-        grad.addColorStop(0.3, `rgba(180, 200, 240, ${alpha})`)
-        grad.addColorStop(1, "rgba(180, 200, 240, 0)")
+        grad.addColorStop(0, `rgba(100, 120, 160, ${alpha * 1.5})`)
+        grad.addColorStop(0.3, `rgba(120, 130, 150, ${alpha})`)
+        grad.addColorStop(1, "rgba(120, 130, 150, 0)")
         ctx.fillStyle = grad
         ctx.fill()
 
@@ -346,7 +430,7 @@ export function CyberBackground() {
           if (x === 0) ctx.moveTo(x, y)
           else ctx.lineTo(x, y)
         }
-        ctx.strokeStyle = `rgba(200, 220, 255, ${alpha * 2.5})`
+        ctx.strokeStyle = `rgba(100, 120, 160, ${alpha * 2.5})`
         ctx.lineWidth = 0.8
         ctx.stroke()
       }
@@ -395,14 +479,14 @@ export function CyberBackground() {
         ctx.rotate(frag.rotation)
 
         ctx.font = `${frag.size}px "Geist Mono", monospace`
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`
         ctx.textAlign = "center"
         ctx.fillText(frag.text, 0, 0)
 
         // Subtle underline / bracket decoration
         if (frag.size > 9) {
           const textWidth = ctx.measureText(frag.text).width
-          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.4})`
+          ctx.strokeStyle = `rgba(0, 0, 0, ${alpha * 0.4})`
           ctx.lineWidth = 0.5
           ctx.beginPath()
           ctx.moveTo(-textWidth / 2, 3)
@@ -462,7 +546,7 @@ export function CyberBackground() {
 
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`
         ctx.fill()
       })
 
@@ -480,7 +564,7 @@ export function CyberBackground() {
               const fadeB = Math.min(b.life / 80, 1) * Math.min((b.maxLife - b.life) / 80, 1)
               const lineAlpha = (1 - dist / 100) * 0.03 * fadeA * fadeB
               if (lineAlpha > 0.002) {
-                ctx.strokeStyle = `rgba(255, 255, 255, ${lineAlpha})`
+                ctx.strokeStyle = `rgba(0, 0, 0, ${lineAlpha})`
                 ctx.beginPath()
                 ctx.moveTo(a.x, a.y)
                 ctx.lineTo(b.x, b.y)
@@ -506,9 +590,9 @@ export function CyberBackground() {
       // Moving bright scanline
       const scanY = (t * 0.04) % (h + 80) - 40
       const grad = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30)
-      grad.addColorStop(0, "rgba(255, 255, 255, 0)")
-      grad.addColorStop(0.5, "rgba(255, 255, 255, 0.02)")
-      grad.addColorStop(1, "rgba(255, 255, 255, 0)")
+      grad.addColorStop(0, "rgba(0, 0, 0, 0)")
+      grad.addColorStop(0.5, "rgba(0, 0, 0, 0.02)")
+      grad.addColorStop(1, "rgba(0, 0, 0, 0)")
       ctx.fillStyle = grad
       ctx.fillRect(0, scanY - 30, w, 60)
       ctx.restore()
@@ -564,6 +648,7 @@ export function CyberBackground() {
       cancelAnimationFrame(animFrameRef.current)
       window.removeEventListener("resize", handleResize)
       window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("click", handleClick)
     }
   }, [createColumn, createParticle, createFragment])
 
