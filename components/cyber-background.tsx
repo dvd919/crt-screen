@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
+import { GRID_N_COLS, GRID_N_COLS_MOBILE, GRID_BLEND, GRID_CURV_K } from "@/lib/grid-constants"
+import { usePan } from "@/lib/pan-context"
 
 interface Ripple {
   x: number
@@ -78,12 +80,13 @@ const FRAGMENT_TEXTS = [
 ]
 
 export function CyberBackground() {
+  const { panRef } = usePan()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mouseRef = useRef({ x: -1000, y: -1000 })
   const ripplesRef = useRef<Ripple[]>([])
   const animFrameRef = useRef<number>(0)
-  const timeRef = useRef(0)
-  const isMobileRef = useRef(false)
+  const timeRef = useRef<number>(0)
+  const isMobileRef = useRef<boolean>(false)
 
   /* ── matrix columns ── */
   const columnsRef = useRef<MatrixColumn[]>([])
@@ -95,7 +98,7 @@ export function CyberBackground() {
   const fragmentsRef = useRef<FloatingFragment[]>([])
 
   /* ── wave phase offsets ── */
-  const wavePhaseRef = useRef(0)
+  const wavePhaseRef = useRef<number>(0)
 
   const createColumn = useCallback((x: number, h: number): MatrixColumn => {
     const length = Math.floor(Math.random() * 18) + 6
@@ -192,31 +195,36 @@ export function CyberBackground() {
     window.addEventListener("mousemove", handleMouseMove)
     window.addEventListener("click", handleClick)
 
-    /* ─── LAYER 1: Generative Grid ─── */
+    /* ─── LAYER 1: Generative Grid (pan-aware) ─── */
     const drawGrid = (w: number, h: number, t: number) => {
-      const nCols = isMobileRef.current ? 10 : 18
+      const nCols = isMobileRef.current ? GRID_N_COLS_MOBILE : GRID_N_COLS
       const nRows = Math.round(nCols * h / w)
       const mobile = isMobileRef.current
       const mx = mouseRef.current.x
       const my = mouseRef.current.y
-      const curvK = 0.12   // outward bow strength
-      const blend = 0.5    // 0 = uniform spacing, 1 = full smoothstep (center-biggest)
+      const curvK = GRID_CURV_K
 
-      // Non-uniform positions: smoothstep remap makes center cells wider
-      const genPos = (n: number, size: number): number[] => {
-        const arr: number[] = []
-        for (let i = 0; i <= n; i++) {
-          const u = i / n
-          const s = u * u * (3 - 2 * u)          // smoothstep
-          arr.push((u * (1 - blend) + s * blend) * size)
-        }
-        return arr
+      const { x: panX, y: panY } = panRef.current
+      const cellW = w / nCols
+      const cellH = h / nRows
+
+      // Pan-aware screen position for a world column/row index
+      const colToScreenX = (c: number): number => {
+        const f = (c * cellW - panX) / w
+        const s = f * f * (3 - 2 * f)
+        return (f * (1 - GRID_BLEND) + s * GRID_BLEND) * w
+      }
+      const rowToScreenY = (r: number): number => {
+        const f = (r * cellH - panY) / h
+        const s = f * f * (3 - 2 * f)
+        return (f * (1 - GRID_BLEND) + s * GRID_BLEND) * h
       }
 
-      const xs = genPos(nCols, w)
-      const ys = genPos(nRows, h)
-      const avgCellW = w / nCols
-      const avgCellH = h / nRows
+      // Visible column/row ranges (with 1-cell buffer)
+      const startCol = Math.floor(panX / cellW) - 1
+      const endCol = Math.ceil((panX + w) / cellW) + 1
+      const startRow = Math.floor(panY / cellH) - 1
+      const endRow = Math.ceil((panY + h) / cellH) + 1
 
       ctx.save()
 
@@ -240,18 +248,20 @@ export function CyberBackground() {
         }
       }
 
-      // Vertical lines
-      // Each line bows outward (away from center) using sin curve — endpoints stay locked to screen top/bottom
-      for (const gx of xs) {
-        const nx = (gx / w - 0.5) * 2   // -1 to 1
+      // Vertical lines — bow stays viewport-anchored (uses screen-space gx)
+      for (let c = startCol; c <= endCol; c++) {
+        const gx = colToScreenX(c)
+        if (gx < -cellW * 2 || gx > w + cellW * 2) continue
+
+        const nx = (gx / w - 0.5) * 2
         const distToMouse = Math.abs(mx - gx)
-        const nearMouse = !mobile && distToMouse < avgCellW * 2
-        const proximity = nearMouse ? Math.max(0, 1 - distToMouse / (avgCellW * 2)) : 0
+        const nearMouse = !mobile && distToMouse < cellW * 2
+        const proximity = nearMouse ? Math.max(0, 1 - distToMouse / (cellW * 2)) : 0
 
         let rippleBoost = 0
         for (const r of ripplesRef.current) {
           const rp = r.t / r.maxT
-          if (Math.abs(Math.abs(r.x - gx) - rp * w * 0.45) < avgCellW) {
+          if (Math.abs(Math.abs(r.x - gx) - rp * w * 0.45) < cellW) {
             rippleBoost = Math.max(rippleBoost, (1 - rp) * 0.15)
           }
         }
@@ -263,7 +273,6 @@ export function CyberBackground() {
         ctx.beginPath()
         let first = true
         for (let y = 0; y <= h; y += 4) {
-          // sin bow: 0 at top & bottom edges, max outward at vertical center
           const bow = curvK * nx * Math.sin(Math.PI * y / h)
           const sx = gx + bow * w * 0.5
           if (first) { ctx.moveTo(sx, y); first = false }
@@ -273,16 +282,19 @@ export function CyberBackground() {
       }
 
       // Horizontal lines
-      for (const gy of ys) {
+      for (let r = startRow; r <= endRow; r++) {
+        const gy = rowToScreenY(r)
+        if (gy < -cellH * 2 || gy > h + cellH * 2) continue
+
         const ny = (gy / h - 0.5) * 2
         const distToMouse = Math.abs(my - gy)
-        const nearMouse = !mobile && distToMouse < avgCellH * 2
-        const proximity = nearMouse ? Math.max(0, 1 - distToMouse / (avgCellH * 2)) : 0
+        const nearMouse = !mobile && distToMouse < cellH * 2
+        const proximity = nearMouse ? Math.max(0, 1 - distToMouse / (cellH * 2)) : 0
 
         let rippleBoost = 0
-        for (const r of ripplesRef.current) {
-          const rp = r.t / r.maxT
-          if (Math.abs(Math.abs(r.y - gy) - rp * w * 0.45) < avgCellH) {
+        for (const r2 of ripplesRef.current) {
+          const rp = r2.t / r2.maxT
+          if (Math.abs(Math.abs(r2.y - gy) - rp * w * 0.45) < cellH) {
             rippleBoost = Math.max(rippleBoost, (1 - rp) * 0.15)
           }
         }
@@ -294,7 +306,6 @@ export function CyberBackground() {
         ctx.beginPath()
         let first = true
         for (let x = 0; x <= w; x += 4) {
-          // sin bow: 0 at left & right edges, max outward at horizontal center
           const bow = curvK * ny * Math.sin(Math.PI * x / w)
           const sy = gy + bow * h * 0.5
           if (first) { ctx.moveTo(x, sy); first = false }
@@ -305,17 +316,22 @@ export function CyberBackground() {
 
       // Intersection highlights at warped positions
       if (!mobile) {
-        for (const gx of xs) {
-          for (const gy of ys) {
+        for (let c = startCol; c <= endCol; c++) {
+          const gx = colToScreenX(c)
+          if (gx < -cellW * 2 || gx > w + cellW * 2) continue
+          for (let r = startRow; r <= endRow; r++) {
+            const gy = rowToScreenY(r)
+            if (gy < -cellH * 2 || gy > h + cellH * 2) continue
+
             const nx = (gx / w - 0.5) * 2
             const ny = (gy / h - 0.5) * 2
             const ix = gx + curvK * nx * Math.sin(Math.PI * gy / h) * w * 0.5
             const iy = gy + curvK * ny * Math.sin(Math.PI * gx / w) * h * 0.5
             const dist = Math.hypot(mx - ix, my - iy)
             let rippleGlow = 0
-            for (const r of ripplesRef.current) {
-              const rp = r.t / r.maxT
-              if (Math.abs(Math.hypot(r.x - ix, r.y - iy) - rp * w * 0.45) < avgCellW * 0.8) {
+            for (const r2 of ripplesRef.current) {
+              const rp = r2.t / r2.maxT
+              if (Math.abs(Math.hypot(r2.x - ix, r2.y - iy) - rp * w * 0.45) < cellW * 0.8) {
                 rippleGlow = Math.max(rippleGlow, (1 - rp) * 0.25)
               }
             }
@@ -578,35 +594,6 @@ export function CyberBackground() {
       ctx.restore()
     }
 
-    /* ─── Scanlines ─── */
-    const drawScanlines = (w: number, h: number, t: number) => {
-      // Horizontal CRT scanlines
-      ctx.save()
-      ctx.fillStyle = "rgba(0, 0, 0, 0.03)"
-      for (let y = 0; y < h; y += 3) {
-        ctx.fillRect(0, y, w, 1)
-      }
-
-      // Moving bright scanline
-      const scanY = (t * 0.04) % (h + 80) - 40
-      const grad = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30)
-      grad.addColorStop(0, "rgba(0, 0, 0, 0)")
-      grad.addColorStop(0.5, "rgba(0, 0, 0, 0.02)")
-      grad.addColorStop(1, "rgba(0, 0, 0, 0)")
-      ctx.fillStyle = grad
-      ctx.fillRect(0, scanY - 30, w, 60)
-      ctx.restore()
-    }
-
-    /* ─── Vignette ─── */
-    const drawVignette = (w: number, h: number) => {
-      const vignette = ctx.createRadialGradient(w / 2, h / 2, w * 0.15, w / 2, h / 2, w * 0.75)
-      vignette.addColorStop(0, "rgba(0, 0, 0, 0)")
-      vignette.addColorStop(1, "rgba(0, 0, 0, 0.5)")
-      ctx.fillStyle = vignette
-      ctx.fillRect(0, 0, w, h)
-    }
-
     /* ─── Main Loop ─── */
     const animate = () => {
       const w = window.innerWidth
@@ -632,13 +619,6 @@ export function CyberBackground() {
       // Layer 5 - Terminal fragments (nearest to viewer)
       drawFragments(w, h, timeRef.current)
 
-      // Post-processing
-      if (!isMobileRef.current) {
-        drawScanlines(w, h, timeRef.current)
-      }
-
-      drawVignette(w, h)
-
       animFrameRef.current = requestAnimationFrame(animate)
     }
 
@@ -650,7 +630,7 @@ export function CyberBackground() {
       window.removeEventListener("mousemove", handleMouseMove)
       window.removeEventListener("click", handleClick)
     }
-  }, [createColumn, createParticle, createFragment])
+  }, [createColumn, createParticle, createFragment, panRef])
 
   return (
     <canvas
