@@ -45,7 +45,12 @@ export function GridOverlay() {
   const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, label: string, copyText?: string, hoverText?: string) => {
     if (didDragRef.current) { e.preventDefault(); return }
     setFound(prev => new Set(prev).add(label))
-    if (hoverText) { e.preventDefault(); return }
+    if (hoverText) {
+      e.preventDefault()
+      setHoveredLabel(`~~${hoverText}`)
+      setTimeout(() => setHoveredLabel(null), 2000)
+      return
+    }
     if (copyText) {
       e.preventDefault()
       navigator.clipboard.writeText(copyText)
