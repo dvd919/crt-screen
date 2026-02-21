@@ -11,6 +11,7 @@ function PageInner() {
   const isDraggingRef = useRef(false)
   const dragOriginRef = useRef({ x: 0, y: 0 })
   const panOriginRef = useRef({ x: 0, y: 0 })
+  const mainRef = useRef<HTMLElement>(null)
 
   const startDrag = useCallback((clientX: number, clientY: number) => {
     isDraggingRef.current = true
@@ -50,20 +51,6 @@ function PageInner() {
     endDrag()
   }, [endDrag])
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0]
-    startDrag(touch.clientX, touch.clientY)
-  }, [startDrag])
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0]
-    moveDrag(touch.clientX, touch.clientY)
-  }, [moveDrag])
-
-  const handleTouchEnd = useCallback(() => {
-    endDrag()
-  }, [endDrag])
-
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
@@ -73,17 +60,41 @@ function PageInner() {
     return () => window.removeEventListener("wheel", onWheel)
   }, [setPan])
 
+  // Non-passive touch listeners — lets us preventDefault to block pull-to-refresh and native scroll
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      const touch = e.touches[0]
+      startDrag(touch.clientX, touch.clientY)
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault()
+      if (e.touches.length !== 1) return
+      const touch = e.touches[0]
+      moveDrag(touch.clientX, touch.clientY)
+    }
+    const onTouchEnd = () => endDrag()
+    el.addEventListener("touchstart", onTouchStart, { passive: true })
+    el.addEventListener("touchmove", onTouchMove, { passive: false })
+    el.addEventListener("touchend", onTouchEnd)
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart)
+      el.removeEventListener("touchmove", onTouchMove)
+      el.removeEventListener("touchend", onTouchEnd)
+    }
+  }, [startDrag, moveDrag, endDrag])
+
   return (
     <main
+      ref={mainRef}
       className="relative min-h-screen bg-white select-none"
-      style={{ cursor: "crosshair" }}
+      style={{ cursor: "crosshair", touchAction: "none" }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
       <CyberBackground />
       <GridOverlay />
