@@ -143,7 +143,7 @@ export function GridOverlay() {
 
   // Suck phase: 0 = none, 0→1 over 2.5s, stays at 1
   const suckPhase = suckStartMsRef.current !== null
-    ? Math.min(1, (Date.now() - suckStartMsRef.current) / 2500)
+    ? Math.min(1, (Date.now() - suckStartMsRef.current) / 2000)
     : 0
 
   // Closest BH copy to screen center — suck target
@@ -188,33 +188,55 @@ export function GridOverlay() {
 
         // Gravitational lens / suck
         let lx = pt.x, ly = pt.y
+        let localPhase = 0  // per-icon stagger phase
         if (item.label !== "BlackHole" && bhCopies.length > 0 && bhRevealed) {
-          if (suckPhase > 0) {
-            // Suck: pull toward nearest BH copy, ease-in-cubic
-            const pull = suckPhase * suckPhase * suckPhase
-            lx = pt.x + (bhSuckTarget.x - pt.x) * pull
-            ly = pt.y + (bhSuckTarget.y - pt.y) * pull
-          } else {
-            // Gravitational lens: push radially away, pulsing
-            const pulse = 1 + 0.5 * Math.sin(pulseTime * 2.2)
-            let ddx = 0, ddy = 0
-            for (const bh of bhCopies) {
-              const dx = pt.x - bh.x
-              const dy = pt.y - bh.y
-              const dist = Math.sqrt(dx * dx + dy * dy)
-              if (dist > 2) {
-                const strength = 5000 * pulse / (dist + 45)
-                ddx += (dx / dist) * strength
-                ddy += (dy / dist) * strength
-              }
+          // Lens offset always computed so suck can blend from it smoothly (no snap on transition)
+          const pulse = 1 + 0.5 * Math.sin(pulseTime * 2.2)
+          let lensOffsetX = 0, lensOffsetY = 0
+          for (const bh of bhCopies) {
+            const dx = pt.x - bh.x
+            const dy = pt.y - bh.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist > 2) {
+              const strength = 5000 * pulse / (dist + 45)
+              lensOffsetX += (dx / dist) * strength
+              lensOffsetY += (dy / dist) * strength
             }
-            lx = pt.x + ddx
-            ly = pt.y + ddy
+          }
+
+          if (suckPhase > 0) {
+            const dx0 = pt.x - bhSuckTarget.x
+            const dy0 = pt.y - bhSuckTarget.y
+            const dist0 = Math.sqrt(dx0 * dx0 + dy0 * dy0)
+            const angle0 = Math.atan2(dy0, dx0)
+
+            // Stagger: closer icons start earlier (delay 0–0.2 based on normalized distance)
+            const maxScreenDist = Math.sqrt(w * w + h * h)
+            const itemDelay = Math.min(0.2, dist0 / maxScreenDist * 0.6)
+            localPhase = Math.max(0, Math.min(1, (suckPhase - itemDelay) / (1 - itemDelay)))
+            const pull = localPhase * localPhase  // ease-in-quad: immediate constant-acceleration feel
+
+            // Wavy infall — angle oscillates rather than spinning in one direction
+            const waveFreq = 2.2 + (i * 0.31 + kCol * 0.47) % 1.2
+            const currentAngle = angle0 + 0.5 * Math.sin(waveFreq * localPhase * Math.PI * 2)
+            const currentDist  = dist0 * (1 - pull)
+
+            lx = bhSuckTarget.x + currentDist * Math.cos(currentAngle)
+            ly = bhSuckTarget.y + currentDist * Math.sin(currentAngle)
+
+            // Blend lens offset out as icon gets pulled in — prevents snap at suck start
+            lx += lensOffsetX * (1 - localPhase)
+            ly += lensOffsetY * (1 - localPhase)
+          } else {
+            lx = pt.x + lensOffsetX
+            ly = pt.y + lensOffsetY
           }
         }
 
-        const isSuckedOut = suckPhase > 0 && item.label !== "BlackHole"
-        const nodeOpacity = isSuckedOut ? Math.max(0, 1 - Math.pow(suckPhase, 0.6)) : 1
+        const isSuckedOut = localPhase > 0 && item.label !== "BlackHole"
+        const nodeOpacity = localPhase < 0.8
+          ? 1
+          : Math.max(0, 1 - (localPhase - 0.8) / 0.2)
 
         const iconSize = Math.max(12, Math.min(nodeW, nodeH) * 0.5)
         const floatDelay = ((i * 0.37 + kCol * 0.61 + kRow * 0.83) % 1) * 3
@@ -236,7 +258,8 @@ export function GridOverlay() {
               width: nodeW,
               height: nodeH,
               opacity: nodeOpacity,
-              pointerEvents: isSuckedOut && suckPhase > 0.8 ? "none" : "auto",
+              transform: isSuckedOut ? `scale(${Math.max(0.05, 1 - localPhase * 0.95)})` : undefined,
+              pointerEvents: isSuckedOut && localPhase > 0.8 ? "none" : "auto",
             }}
           >
             <a
@@ -518,7 +541,7 @@ export function GridOverlay() {
               transform: "translate(-50%, -50%)",
               fontFamily: "var(--font-geist-mono, monospace)",
               fontSize: 13,
-              letterSpacing: "0.4em",
+              letterSpacing: "0.1em",
               color: "rgba(255,255,255,0.88)",
               whiteSpace: "nowrap",
             }}>
