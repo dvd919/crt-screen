@@ -11,7 +11,7 @@ export interface GridItemConfig {
 }
 
 export const GRID_ITEMS: GridItemConfig[] = [
-  { col: 1,  row: 1, colSpan: 1, rowSpan: 1, label: "SoundCloud",     href: "https://soundcloud.com/dvdroom",                     favicon: "https://www.google.com/s2/favicons?domain=soundcloud.com&sz=64" },
+  { col: 1,  row: 1, colSpan: 1, rowSpan: 1, label: "SoundCloud",     href: "https://soundcloud.com/dvdroom",                     favicon: "https://soundcloud.com/favicon.ico" },
   { col: 7,  row: 2, colSpan: 1, rowSpan: 1, label: "IDEARIGHTNOW", href: "https://idearightnow.com",                           favicon: "https://www.google.com/s2/favicons?domain=idearightnow.com&sz=64" },
   { col: 2,  row: 6, colSpan: 1, rowSpan: 1, label: "Instagram",      href: "https://www.instagram.com/dvd.919/",                 favicon: "https://www.google.com/s2/favicons?domain=instagram.com&sz=64" },
   { col: 8,  row: 7, colSpan: 1, rowSpan: 1, label: "YouTube",        href: "https://www.youtube.com/@dvd-919",                   favicon: "https://www.google.com/s2/favicons?domain=youtube.com&sz=64" },
