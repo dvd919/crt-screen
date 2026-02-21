@@ -76,10 +76,21 @@ function PageInner() {
       // Only prevent default once a real drag is confirmed — preserves click synthesis for taps
       if (didDragRef.current) e.preventDefault()
     }
-    const onTouchEnd = () => endDrag()
+    const onTouchEnd = (e: TouchEvent) => {
+      const wasDrag = didDragRef.current
+      endDrag()
+      if (!wasDrag && e.changedTouches.length > 0) {
+        // Suppress browser's delayed synthetic click (avoids double-fire)
+        e.preventDefault()
+        // Manually dispatch the tap so links work regardless of click synthesis
+        const touch = e.changedTouches[0]
+        const target = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null
+        target?.closest('a')?.click()
+      }
+    }
     el.addEventListener("touchstart", onTouchStart, { passive: true })
     el.addEventListener("touchmove", onTouchMove, { passive: false })
-    el.addEventListener("touchend", onTouchEnd)
+    el.addEventListener("touchend", onTouchEnd, { passive: false })
     return () => {
       el.removeEventListener("touchstart", onTouchStart)
       el.removeEventListener("touchmove", onTouchMove)
