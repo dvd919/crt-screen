@@ -7,6 +7,18 @@ import { usePan } from "@/lib/pan-context"
 
 const NODE_PAD = 8  // gap between node edge and cell boundary
 
+const FAVICON_DEFAULT = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>?</text></svg>"
+
+function setFavicon(href: string) {
+  let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+  if (!link) {
+    link = document.createElement("link")
+    link.rel = "icon"
+    document.head.appendChild(link)
+  }
+  link.href = href
+}
+
 export function GridOverlay() {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -18,6 +30,10 @@ export function GridOverlay() {
     update()
     window.addEventListener("resize", update)
     return () => window.removeEventListener("resize", update)
+  }, [])
+
+  useEffect(() => {
+    setFavicon(FAVICON_DEFAULT)
   }, [])
 
   const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, copyText?: string, hoverText?: string) => {
@@ -121,8 +137,8 @@ export function GridOverlay() {
               rel="noopener noreferrer"
               onClick={(e) => handleItemClick(e, item.copyText, item.hoverText)}
               className="grid-node flex w-full h-full items-center justify-center"
-              onMouseEnter={() => setHoveredLabel(item.hoverText ? `~~${item.hoverText}` : item.copyText ? `${item.label}||${item.copyText}` : item.label)}
-              onMouseLeave={() => setHoveredLabel(null)}
+              onMouseEnter={() => { setHoveredLabel(item.hoverText ? `~~${item.hoverText}` : item.copyText ? `${item.label}||${item.copyText}` : item.label); setFavicon(item.hoverText ? FAVICON_DEFAULT : item.favicon) }}
+              onMouseLeave={() => { setHoveredLabel(null); setFavicon(FAVICON_DEFAULT) }}
               style={{
                 ["--node-skew-x" as string]: `${skewXDeg.toFixed(2)}deg`,
                 ["--node-skew-y" as string]: `${skewYDeg.toFixed(2)}deg`,
