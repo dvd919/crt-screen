@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useCallback } from "react"
+import { useRef, useCallback, useEffect } from "react"
 import { CyberBackground } from "@/components/cyber-background"
 import { GridOverlay } from "@/components/grid-overlay"
 import { ScanlineOverlay } from "@/components/scanline-overlay"
@@ -63,6 +63,15 @@ function PageInner() {
   const handleTouchEnd = useCallback(() => {
     endDrag()
   }, [endDrag])
+
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setPan(prev => ({ x: prev.x + e.deltaX, y: prev.y + e.deltaY }))
+    }
+    window.addEventListener("wheel", onWheel, { passive: false })
+    return () => window.removeEventListener("wheel", onWheel)
+  }, [setPan])
 
   return (
     <main

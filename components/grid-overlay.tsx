@@ -20,8 +20,9 @@ export function GridOverlay() {
     return () => window.removeEventListener("resize", update)
   }, [])
 
-  const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, copyText?: string) => {
+  const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, copyText?: string, hoverText?: string) => {
     if (didDragRef.current) { e.preventDefault(); return }
+    if (hoverText) { e.preventDefault(); return }
     if (copyText) {
       e.preventDefault()
       navigator.clipboard.writeText(copyText)
@@ -118,9 +119,9 @@ export function GridOverlay() {
               href={item.href}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => handleItemClick(e, item.copyText)}
+              onClick={(e) => handleItemClick(e, item.copyText, item.hoverText)}
               className="grid-node flex w-full h-full items-center justify-center"
-              onMouseEnter={() => setHoveredLabel(item.label)}
+              onMouseEnter={() => setHoveredLabel(item.hoverText ? `~~${item.hoverText}` : item.copyText ? `${item.label}||${item.copyText}` : item.label)}
               onMouseLeave={() => setHoveredLabel(null)}
               style={{
                 ["--node-skew-x" as string]: `${skewXDeg.toFixed(2)}deg`,
@@ -150,11 +151,13 @@ export function GridOverlay() {
           pointerEvents: "none",
           zIndex: 9998,
           textAlign: "center",
-          fontSize: 20,
           whiteSpace: "nowrap",
-          textTransform: "uppercase",
+          textTransform: hoveredLabel?.startsWith("~~") ? "none" : "uppercase",
         }}>
-          {hoveredLabel}
+          <div style={{ fontSize: 16 }}>{hoveredLabel?.startsWith("~~") ? hoveredLabel.slice(2) : hoveredLabel?.split("||")[0]}</div>
+          {hoveredLabel?.includes("||") && (
+            <div style={{ fontSize: 20, marginTop: 4, letterSpacing: "0.15em", textTransform: "none" }}>{hoveredLabel.split("||")[1]}</div>
+          )}
         </div>
       )}
       {copied && (
