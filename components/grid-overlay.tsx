@@ -23,6 +23,12 @@ export function GridOverlay() {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
   const [copied, setCopied] = useState(false)
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
+  const [found, setFound] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("jueng-found")
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch { return new Set() }
+  })
   const { pan, didDragRef } = usePan()
 
   useEffect(() => {
@@ -36,8 +42,13 @@ export function GridOverlay() {
     setFavicon(FAVICON_DEFAULT)
   }, [])
 
-  const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, copyText?: string, hoverText?: string) => {
+  const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, label: string, copyText?: string, hoverText?: string) => {
     if (didDragRef.current) { e.preventDefault(); return }
+    setFound(prev => {
+      const next = new Set(prev).add(label)
+      try { localStorage.setItem("jueng-found", JSON.stringify([...next])) } catch {}
+      return next
+    })
     if (hoverText) { e.preventDefault(); return }
     if (copyText) {
       e.preventDefault()
@@ -135,7 +146,7 @@ export function GridOverlay() {
               href={item.href}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => handleItemClick(e, item.copyText, item.hoverText)}
+              onClick={(e) => handleItemClick(e, item.label, item.copyText, item.hoverText)}
               className="grid-node flex w-full h-full items-center justify-center"
               onMouseEnter={() => { setHoveredLabel(item.hoverText ? `~~${item.hoverText}` : item.copyText ? `${item.label}||${item.copyText}` : item.label); setFavicon(item.hoverText ? FAVICON_DEFAULT : item.favicon) }}
               onMouseLeave={() => { setHoveredLabel(null); setFavicon(FAVICON_DEFAULT) }}
@@ -152,6 +163,8 @@ export function GridOverlay() {
       }
     }
   }
+
+  const total = GRID_ITEMS.length
 
   return (
     <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 10 }}>
@@ -194,6 +207,20 @@ export function GridOverlay() {
           <div style={{ fontSize: 20, marginTop: 6 }}>david@jue.ng</div>
         </div>
       )}
+      <div style={{
+        position: "fixed",
+        bottom: "5%",
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontFamily: "var(--font-geist-mono, monospace)",
+        fontSize: 11,
+        letterSpacing: "0.2em",
+        color: "rgba(0,0,0,0.35)",
+        pointerEvents: "none",
+        zIndex: 9998,
+      }}>
+        {found.size}/{total}
+      </div>
       <style>{`
         @keyframes node-float {
           0%, 100% { transform: translateY(0px) skewX(var(--node-skew-x)) skewY(var(--node-skew-y)); }
