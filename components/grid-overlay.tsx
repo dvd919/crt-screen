@@ -86,6 +86,23 @@ export function GridOverlay() {
     }
   }, [found, visibleTotal, glitched])
 
+  // Secret activation: type "code" anywhere to trigger the black hole
+  useEffect(() => {
+    const SECRET = "code"
+    let buf = ""
+    const onKey = (e: KeyboardEvent) => {
+      if (glitched) return
+      buf = (buf + e.key).slice(-SECRET.length)
+      if (buf === SECRET) {
+        buf = ""
+        // Mark all items found so bhRevealed becomes true (enables BH render + suck)
+        setFound(new Set(GRID_ITEMS.map(item => item.label)))
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [glitched])
+
 
   if (!dims) return null
 
@@ -179,18 +196,22 @@ export function GridOverlay() {
         // Gravitational lens / suck
         let lx = pt.x, ly = pt.y
         let localPhase = 0  // per-icon stagger phase
+        let suckedAngle = 0  // BH direction, used for spaghettification transform
         if (item.label !== "BlackHole" && bhCopies.length > 0 && bhRevealed) {
           // Lens offset always computed so suck can blend from it smoothly (no snap on transition)
-          const pulse = 1 + 0.5 * Math.sin(pulseTime * 2.2)
+          // Per-icon phase offset — desync the pulse so icons don't all breathe as one
+          const iconPhase = (i * 0.37 + kCol * 0.61 + kRow * 0.83) % 1
+          const pulse = 1 + 0.4 * Math.sin(pulseTime * 1.8 + iconPhase * Math.PI * 2)
           let lensOffsetX = 0, lensOffsetY = 0
           for (const bh of bhCopies) {
             const dx = pt.x - bh.x
             const dy = pt.y - bh.y
             const dist = Math.sqrt(dx * dx + dy * dy)
             if (dist > 2) {
-              const strength = 5000 * pulse / (dist + 45)
-              lensOffsetX += (dx / dist) * strength
-              lensOffsetY += (dy / dist) * strength
+              const radial = 5500 * pulse / (dist * 0.6 + 35)
+              const tangential = radial * 0.65  // icons curve around BH, not just flee radially
+              lensOffsetX += (dx / dist) * radial + (-dy / dist) * tangential
+              lensOffsetY += (dy / dist) * radial + (dx / dist) * tangential
             }
           }
 
@@ -203,6 +224,7 @@ export function GridOverlay() {
             const dy0 = pt.y - nearestBH.y
             const dist0 = Math.sqrt(dx0 * dx0 + dy0 * dy0)
             const angle0 = Math.atan2(dy0, dx0)
+            suckedAngle = angle0
 
             // Stagger: closer icons start earlier (delay 0–0.2 based on normalized distance)
             const maxScreenDist = Math.sqrt(w * w + h * h)
@@ -210,9 +232,10 @@ export function GridOverlay() {
             localPhase = Math.max(0, Math.min(1, (suckPhase - itemDelay) / (1 - itemDelay)))
             const pull = localPhase * localPhase  // ease-in-quad: immediate constant-acceleration feel
 
-            // Wavy infall — angle oscillates rather than spinning in one direction
-            const waveFreq = 2.2 + (i * 0.31 + kCol * 0.47) % 1.2
-            const currentAngle = angle0 + 0.5 * Math.sin(waveFreq * localPhase * Math.PI * 2)
+            // Orbital spiral — carves an arc around the BH, angular velocity increasing as it falls in
+            // Alternating CW/CCW per icon so they swirl from all directions
+            const spinDir = ((i + kCol + kRow) % 2 === 0) ? 1 : -1
+            const currentAngle = angle0 + spinDir * localPhase * localPhase * Math.PI * 1.5  // 0 → ~270° total arc
             const currentDist  = dist0 * (1 - pull)
 
             lx = nearestBH.x + currentDist * Math.cos(currentAngle)
@@ -252,7 +275,22 @@ export function GridOverlay() {
               width: nodeW,
               height: nodeH,
               opacity: nodeOpacity,
-              transform: isSuckedOut ? `scale(${Math.max(0.05, 1 - localPhase * 0.95)})` : undefined,
+              transform: isSuckedOut ? (() => {
+                const sz = Math.max(0.02, 1 - localPhase * 0.98)
+                const spag = 1 + localPhase * localPhase * 2.5   // more extreme tidal stretch
+                const adeg = suckedAngle * 180 / Math.PI
+                return `rotate(${adeg}deg) scale(${sz * spag}, ${sz * Math.max(0.04, 1 - localPhase * 0.96)}) rotate(${-adeg}deg)`
+              })() : undefined,
+              filter: (() => {
+                if (!isSuckedOut || localPhase < 0.25) return undefined
+                const blurAmt = localPhase > 0.5 ? ((localPhase - 0.5) / 0.5 * 6).toFixed(1) : '0'
+                // Directional trail shadow pointing away from BH (opposite to travel direction)
+                const trailDist = localPhase * localPhase * 12
+                const tx = (Math.cos(suckedAngle + Math.PI) * trailDist).toFixed(1)
+                const ty = (Math.sin(suckedAngle + Math.PI) * trailDist).toFixed(1)
+                return `blur(${blurAmt}px) drop-shadow(${tx}px ${ty}px 5px rgba(0,0,0,0.45))`
+              })(),
+              transition: isSuckedOut ? 'none' : undefined,  // suppress 150ms Tailwind transition during suck
               pointerEvents: isSuckedOut && localPhase > 0.8 ? "none" : "auto",
             }}
           >
