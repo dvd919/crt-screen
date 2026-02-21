@@ -10,6 +10,7 @@ interface PanContextValue {
   panRef: RefObject<PanState>
   setPan: (update: PanState | ((prev: PanState) => PanState)) => void
   didDragRef: RefObject<boolean>
+  bhRevealedRef: RefObject<boolean>
 }
 
 const PanContext = createContext<PanContextValue | null>(null)
@@ -18,6 +19,7 @@ export function PanProvider({ children }: { children: React.ReactNode }) {
   const [pan, setPanState] = useState<PanState>({ x: 0, y: 0 })
   const panRef = useRef<PanState>({ x: 0, y: 0 })
   const didDragRef = useRef<boolean>(false)
+  const bhRevealedRef = useRef<boolean>(false)
 
   const setPan = useCallback((update: PanState | ((prev: PanState) => PanState)) => {
     setPanState(prev => {
@@ -28,7 +30,7 @@ export function PanProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <PanContext.Provider value={{ pan, panRef, setPan, didDragRef }}>
+    <PanContext.Provider value={{ pan, panRef, setPan, didDragRef, bhRevealedRef }}>
       {children}
     </PanContext.Provider>
   )

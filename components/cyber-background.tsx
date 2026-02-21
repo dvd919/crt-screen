@@ -63,7 +63,7 @@ const FRAGMENT_TEXTS = [
 ]
 
 export function CyberBackground() {
-  const { panRef } = usePan()
+  const { panRef, bhRevealedRef } = usePan()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mouseRef = useRef({ x: -1000, y: -1000 })
   const ripplesRef = useRef<Ripple[]>([])
@@ -210,6 +210,23 @@ export function CyberBackground() {
       const startRow = Math.floor(panY / cellH) - 1
       const endRow = Math.ceil((panY + h) / cellH) + 1
 
+      // Gravitational lens — only active when BH is revealed
+      const BH_COL = 5.5, BH_ROW = 5.5
+      const bhPulse = 1 + 0.5 * Math.sin(t * 0.0022)  // matches grid-overlay freq
+      const bhCopies: Array<{ x: number; y: number }> = []
+      if (bhRevealedRef.current) {
+        const kcc = Math.round(((panX + w * 0.5) / cellW - BH_COL) / nCols)
+        const krc = Math.round(((panY + h * 0.5) / cellH - BH_ROW) / nRows)
+        for (let kc = kcc - 1; kc <= kcc + 1; kc++) {
+          for (let kr = krc - 1; kr <= krc + 1; kr++) {
+            const bhSx = colToScreenX(BH_COL + kc * nCols)
+            const bhSy = rowToScreenY(BH_ROW + kr * nRows)
+            if (bhSx < -w || bhSx > 2 * w || bhSy < -h || bhSy > 2 * h) continue
+            bhCopies.push({ x: bhSx, y: bhSy })
+          }
+        }
+      }
+
       ctx.save()
 
       // Ripples (screen space)
@@ -258,9 +275,14 @@ export function CyberBackground() {
         let first = true
         for (let y = 0; y <= h; y += 4) {
           const bow = curvK * nx * Math.sin(Math.PI * y / h)
-          const sx = gx + bow * w * 0.5
-          if (first) { ctx.moveTo(sx, y); first = false }
-          else ctx.lineTo(sx, y)
+          let sx = gx + bow * w * 0.5, sy = y
+          for (const bh of bhCopies) {
+            const ldx = sx - bh.x, ldy = sy - bh.y
+            const ldist = Math.sqrt(ldx * ldx + ldy * ldy)
+            if (ldist > 2) { const ls = 5000 * bhPulse / (ldist + 45); sx += ldx / ldist * ls; sy += ldy / ldist * ls }
+          }
+          if (first) { ctx.moveTo(sx, sy); first = false }
+          else ctx.lineTo(sx, sy)
         }
         ctx.stroke()
       }
@@ -291,9 +313,14 @@ export function CyberBackground() {
         let first = true
         for (let x = 0; x <= w; x += 4) {
           const bow = curvK * ny * Math.sin(Math.PI * x / w)
-          const sy = gy + bow * h * 0.5
-          if (first) { ctx.moveTo(x, sy); first = false }
-          else ctx.lineTo(x, sy)
+          let sx = x, sy = gy + bow * h * 0.5
+          for (const bh of bhCopies) {
+            const ldx = sx - bh.x, ldy = sy - bh.y
+            const ldist = Math.sqrt(ldx * ldx + ldy * ldy)
+            if (ldist > 2) { const ls = 5000 * bhPulse / (ldist + 45); sx += ldx / ldist * ls; sy += ldy / ldist * ls }
+          }
+          if (first) { ctx.moveTo(sx, sy); first = false }
+          else ctx.lineTo(sx, sy)
         }
         ctx.stroke()
       }
@@ -309,8 +336,13 @@ export function CyberBackground() {
 
             const nx = (gx / w - 0.5) * 2
             const ny = (gy / h - 0.5) * 2
-            const ix = gx + curvK * nx * Math.sin(Math.PI * gy / h) * w * 0.5
-            const iy = gy + curvK * ny * Math.sin(Math.PI * gx / w) * h * 0.5
+            let ix = gx + curvK * nx * Math.sin(Math.PI * gy / h) * w * 0.5
+            let iy = gy + curvK * ny * Math.sin(Math.PI * gx / w) * h * 0.5
+            for (const bh of bhCopies) {
+              const ldx = ix - bh.x, ldy = iy - bh.y
+              const ldist = Math.sqrt(ldx * ldx + ldy * ldy)
+              if (ldist > 2) { const ls = 5000 * bhPulse / (ldist + 45); ix += ldx / ldist * ls; iy += ldy / ldist * ls }
+            }
             const dist = Math.hypot(mx - ix, my - iy)
             let rippleGlow = 0
             for (const r2 of ripplesRef.current) {
