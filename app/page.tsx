@@ -70,10 +70,11 @@ function PageInner() {
       startDrag(touch.clientX, touch.clientY)
     }
     const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault()
       if (e.touches.length !== 1) return
       const touch = e.touches[0]
       moveDrag(touch.clientX, touch.clientY)
+      // Only prevent default once a real drag is confirmed — preserves click synthesis for taps
+      if (didDragRef.current) e.preventDefault()
     }
     const onTouchEnd = () => endDrag()
     el.addEventListener("touchstart", onTouchStart, { passive: true })
