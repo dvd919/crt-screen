@@ -1,5 +1,6 @@
-export const GRID_N_COLS = 18
+export const GRID_N_COLS = 10
 export const GRID_N_COLS_MOBILE = 10
+export const GRID_N_ROWS = 10
 export const GRID_BLEND = 0.5
 export const GRID_CURV_K = 0.12
 

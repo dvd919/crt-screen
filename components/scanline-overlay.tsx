@@ -37,7 +37,7 @@ export function ScanlineOverlay() {
       ctx.clearRect(0, 0, w, h)
 
       // Static scanlines
-      ctx.fillStyle = "rgba(0, 0, 0, 0.03)"
+      ctx.fillStyle = "rgba(0, 0, 0, 0.08)"
       for (let y = 0; y < h; y += 3) {
         ctx.fillRect(0, y, w, 1)
       }
@@ -75,7 +75,7 @@ export function ScanlineOverlay() {
     <canvas
       ref={canvasRef}
       className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: 20 }}
+      style={{ zIndex: 9999 }}
       aria-hidden="true"
     />
   )

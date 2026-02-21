@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
-import { GRID_N_COLS, GRID_N_COLS_MOBILE, GRID_BLEND, GRID_CURV_K } from "@/lib/grid-constants"
+import { GRID_N_COLS, GRID_N_COLS_MOBILE, GRID_N_ROWS, GRID_BLEND, GRID_CURV_K } from "@/lib/grid-constants"
 import { usePan } from "@/lib/pan-context"
 
 interface Ripple {
@@ -48,35 +48,18 @@ interface FloatingFragment {
 }
 
 /* ── constants ── */
-const MATRIX_CHARS = "01アイウエオカキクケコサシスセソタチツテトナニヌネノ{}[]<>/:;=+-_|\\@#$%&*~"
+const MATRIX_CHARS = "01{}[]<>/:;=+-_|\\@#$%&*~"
 const FRAGMENT_TEXTS = [
-  "DROP::001",
-  "//OVERRIDE",
-  "SYSTEM.OUT",
-  "NULL_PTR",
-  "0xFF00FF",
-  "VOID*",
-  "INIT()",
-  "STDOUT",
-  "EXEC//",
-  "::ROOT",
-  "~/.CONFIG",
-  "MALLOC()",
-  "KERNEL",
-  "BUFFER",
-  "SIGNAL",
-  "DAEMON",
-  "THREAD",
-  "ASYNC",
-  "YIELD",
-  "PORT:443",
-  "SSH://",
-  "REF*",
-  "STACK",
-  "HEAP",
-  "$ENV",
-  "RUN.SH",
-  "ERR:0x0",
+  "SOUNDCLOUD",
+  "dvdroom",
+  "INSTAGRAM",
+  "dvd.919",
+  "YOUTUBE",
+  "LINKEDIN",
+  "jue.ng",
+  "IDEARIGHTNOW",
+  "idearightnow.com",
+  "david@jue.ng"
 ]
 
 export function CyberBackground() {
@@ -135,7 +118,7 @@ export function CyberBackground() {
     opacity: 0,
     size: Math.random() * 4 + 8,
     life: 0,
-    maxLife: Math.random() * 500 + 300,
+    maxLife: Math.random() * 1200 + 800,
     rotation: (Math.random() - 0.5) * 0.15,
     rotationSpeed: (Math.random() - 0.5) * 0.0003,
   }), [])
@@ -186,7 +169,7 @@ export function CyberBackground() {
       particlesRef.current = Array.from({ length: pCount }, () => createParticle(w, h))
 
       // LAYER 3: Floating terminal fragments
-      const fCount = mobile ? 4 : 10
+      const fCount = 1
       fragmentsRef.current = Array.from({ length: fCount }, () => createFragment(w, h))
     }
 
@@ -198,15 +181,16 @@ export function CyberBackground() {
     /* ─── LAYER 1: Generative Grid (pan-aware) ─── */
     const drawGrid = (w: number, h: number, t: number) => {
       const nCols = isMobileRef.current ? GRID_N_COLS_MOBILE : GRID_N_COLS
-      const nRows = Math.round(nCols * h / w)
+      const nRows = GRID_N_ROWS
       const mobile = isMobileRef.current
       const mx = mouseRef.current.x
       const my = mouseRef.current.y
       const curvK = GRID_CURV_K
 
       const { x: panX, y: panY } = panRef.current
-      const cellW = w / nCols
-      const cellH = h / nRows
+      const cellSize = Math.max(w / nCols, h / nRows) * 0.72  // square cells, zoomed out
+      const cellW = cellSize
+      const cellH = cellSize
 
       // Pan-aware screen position for a world column/row index
       const colToScreenX = (c: number): number => {
