@@ -23,12 +23,7 @@ export function GridOverlay() {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
   const [copied, setCopied] = useState(false)
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
-  const [found, setFound] = useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem("jueng-found")
-      return stored ? new Set(JSON.parse(stored)) : new Set()
-    } catch { return new Set() }
-  })
+  const [found, setFound] = useState<Set<string>>(new Set())
   const [glitched, setGlitched] = useState(false)
   const [glitching, setGlitching] = useState(false)
   const [pulseTime, setPulseTime] = useState(0)
@@ -49,11 +44,7 @@ export function GridOverlay() {
 
   const handleItemClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, label: string, copyText?: string, hoverText?: string) => {
     if (didDragRef.current) { e.preventDefault(); return }
-    setFound(prev => {
-      const next = new Set(prev).add(label)
-      try { localStorage.setItem("jueng-found", JSON.stringify([...next])) } catch {}
-      return next
-    })
+    setFound(prev => new Set(prev).add(label))
     if (hoverText) { e.preventDefault(); return }
     if (copyText) {
       e.preventDefault()
@@ -274,7 +265,6 @@ export function GridOverlay() {
                     setTimeout(() => setEndPhase(2), 2000)
                     setTimeout(() => setEndPhase(3), 4000)
                     setTimeout(() => {
-                      try { localStorage.removeItem("jueng-found") } catch {}
                       window.location.reload()
                     }, 5500)
                   }
