@@ -75,7 +75,7 @@ function PageInner() {
 
   return (
     <main
-      className="relative min-h-screen bg-white"
+      className="relative min-h-screen bg-white select-none"
       style={{ cursor: "grab" }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
