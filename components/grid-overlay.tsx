@@ -137,12 +137,6 @@ export function GridOverlay() {
     ? Math.min(1, (Date.now() - suckStartMsRef.current) / 2000)
     : 0
 
-  // Closest BH copy to screen center — suck target
-  const bhSuckTarget = bhCopies.reduce<{ x: number; y: number } | null>((best, bh) => {
-    if (!best) return bh
-    return (bh.x - w / 2) ** 2 + (bh.y - h / 2) ** 2 < (best.x - w / 2) ** 2 + (best.y - h / 2) ** 2 ? bh : best
-  }, null) ?? { x: w / 2, y: h / 2 }
-
   const nodes: React.ReactNode[] = []
 
   for (let i = 0; i < GRID_ITEMS.length; i++) {
@@ -196,8 +190,12 @@ export function GridOverlay() {
           }
 
           if (suckPhase > 0) {
-            const dx0 = pt.x - bhSuckTarget.x
-            const dy0 = pt.y - bhSuckTarget.y
+            // Nearest BH copy to this icon (not screen center)
+            const nearestBH = bhCopies.reduce((best, bh) =>
+              (pt.x - bh.x) ** 2 + (pt.y - bh.y) ** 2 < (pt.x - best.x) ** 2 + (pt.y - best.y) ** 2 ? bh : best
+            )
+            const dx0 = pt.x - nearestBH.x
+            const dy0 = pt.y - nearestBH.y
             const dist0 = Math.sqrt(dx0 * dx0 + dy0 * dy0)
             const angle0 = Math.atan2(dy0, dx0)
 
@@ -212,8 +210,8 @@ export function GridOverlay() {
             const currentAngle = angle0 + 0.5 * Math.sin(waveFreq * localPhase * Math.PI * 2)
             const currentDist  = dist0 * (1 - pull)
 
-            lx = bhSuckTarget.x + currentDist * Math.cos(currentAngle)
-            ly = bhSuckTarget.y + currentDist * Math.sin(currentAngle)
+            lx = nearestBH.x + currentDist * Math.cos(currentAngle)
+            ly = nearestBH.y + currentDist * Math.sin(currentAngle)
 
             // Blend lens offset out as icon gets pulled in — prevents snap at suck start
             lx += lensOffsetX * (1 - localPhase)
