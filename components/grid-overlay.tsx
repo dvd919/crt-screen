@@ -29,83 +29,9 @@ export function GridOverlay() {
   const [glitching, setGlitching] = useState(false)
   const [pulseTime, setPulseTime] = useState(0)
   const suckStartMsRef = useRef<number | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [endPhase, setEndPhase] = useState(0)  // 0=none 1=blackout 2=thankyou 3=tvstatic
+  const [bhExpanding, setBhExpanding] = useState<{ x: number; y: number } | null>(null)
+  const [endPhase, setEndPhase] = useState(0)  // 0=none 3=tvstatic
   const { pan, didDragRef, bhRevealedRef } = usePan()
-
-  useEffect(() => {
-    if (endPhase !== 1) return
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    const W = window.innerWidth
-    const H = window.innerHeight
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = W * dpr
-    canvas.height = H * dpr
-    canvas.style.width = W + "px"
-    canvas.style.height = H + "px"
-    ctx.scale(dpr, dpr)
-    const cx = W / 2, cy = H / 2
-    const diagonal = Math.sqrt(W * W + H * H)
-    // Stars created at the singularity, bursting outward — Big Bang
-    // Color mix: bright blue-white (hot newly-formed stars), white, faint warm
-    const N = 520
-    const stars = Array.from({ length: N }, () => {
-      const r = Math.random()
-      const color = r > 0.88 ? "175,215,255" : r > 0.70 ? "210,232,255" : r > 0.42 ? "255,255,255" : "255,251,242"
-      return {
-        angle: Math.random() * Math.PI * 2,
-        speed: 0.10 + Math.random() * 0.74,          // spread of velocities
-        width: Math.random() < 0.09 ? 1.8 + Math.random() * 0.9 : 0.3 + Math.random() * 1.45,
-        color,
-        bright: 0.45 + Math.random() * 0.55,
-      }
-    })
-    const startTime = performance.now()
-    let raf: number
-    const curve = (t: number) => Math.pow(Math.max(0, t), 0.62)  // explosive burst → decelerate
-    const draw = (now: number) => {
-      const p = Math.min(1, (now - startTime) / 4000)
-      ctx.clearRect(0, 0, W, H)
-      // Global envelope: flash in over 50ms, hold, fade to black gently over final 22%
-      const globalAlpha = p < 0.14 ? p / 0.14 : p > 0.78 ? Math.pow((1 - p) / 0.22, 1.8) : 1
-      // Central creation flash: intense white glow that expands and fades quickly
-      const flashA = Math.max(0, 1 - p / 0.22) * globalAlpha
-      if (flashA > 0.002) {
-        const r = Math.min(W, H) * (0.08 + p * 0.55)
-        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
-        g.addColorStop(0,   `rgba(255,255,255,${(flashA * 0.95).toFixed(3)})`)
-        g.addColorStop(0.18,`rgba(225,238,255,${(flashA * 0.65).toFixed(3)})`)
-        g.addColorStop(0.55,`rgba(160,200,255,${(flashA * 0.18).toFixed(3)})`)
-        g.addColorStop(1,   "rgba(0,0,0,0)")
-        ctx.fillStyle = g
-        ctx.fillRect(0, 0, W, H)
-      }
-      // Stars shooting outward from center, slowing as the universe expands
-      for (const star of stars) {
-        const curDist  = diagonal * star.speed * curve(p)
-        const prevDist = diagonal * star.speed * curve(Math.max(0, p - 0.032))
-        if (curDist > diagonal * 0.80) continue
-        const x1 = cx + Math.cos(star.angle) * prevDist
-        const y1 = cy + Math.sin(star.angle) * prevDist
-        const x2 = cx + Math.cos(star.angle) * curDist
-        const y2 = cy + Math.sin(star.angle) * curDist
-        const a = Math.min(1, globalAlpha * star.bright)
-        ctx.strokeStyle = `rgba(${star.color},${a.toFixed(3)})`
-        ctx.lineWidth = star.width
-        ctx.lineCap = "round"
-        ctx.beginPath()
-        ctx.moveTo(x1, y1)
-        ctx.lineTo(x2, y2)
-        ctx.stroke()
-      }
-      if (p < 1) raf = requestAnimationFrame(draw)
-    }
-    raf = requestAnimationFrame(draw)
-    return () => cancelAnimationFrame(raf)
-  }, [endPhase])
 
   useEffect(() => {
     const update = () => setDims({ w: window.innerWidth, h: window.innerHeight })
@@ -378,13 +304,13 @@ export function GridOverlay() {
               onClick={(e) => {
                 if (item.label === "BlackHole") {
                   e.preventDefault()
-                  if (suckPhase >= 1 && endPhase === 0) {
-                    setEndPhase(1)
-                    setTimeout(() => setEndPhase(2), 4000)
-                    setTimeout(() => setEndPhase(3), 6000)
+                  if (suckPhase >= 1 && endPhase === 0 && !bhExpanding) {
+                    setBhExpanding({ x: e.clientX, y: e.clientY })
                     setTimeout(() => {
-                      window.location.reload()
-                    }, 7500)
+                      setEndPhase(1)
+                      setTimeout(() => setEndPhase(3), 4000)
+                      setTimeout(() => { window.location.reload() }, 5500)
+                    }, 1500)
                   }
                   return
                 }
@@ -580,17 +506,11 @@ export function GridOverlay() {
           0%, 100% { transform: scale(1);    box-shadow: 0 0 8px 3px rgba(0,0,0,0.7); }
           50%      { transform: scale(1.08);  box-shadow: 0 0 18px 8px rgba(0,0,0,0.85); }
         }
-        @keyframes end-blackout {
-          from { opacity: 0; }
-          to   { opacity: 1; }
+        @keyframes bh-grow {
+          0%   { transform: scale(0.01); }
+          100% { transform: scale(1); }
         }
-        @keyframes end-thankyou {
-          0%   { opacity: 0; letter-spacing: 0.55em; }
-          18%  { opacity: 0; letter-spacing: 0.55em; }
-          38%  { opacity: 1; letter-spacing: 0.38em; }
-          72%  { opacity: 1; letter-spacing: 0.38em; }
-          100% { opacity: 0; letter-spacing: 0.38em; }
-        }
+
         @keyframes end-tv-static {
           0%   { background: #000; }
           7%   { background: #fff; }
@@ -636,35 +556,27 @@ export function GridOverlay() {
         </div>
       )}
       {nodes}
+      {bhExpanding && endPhase === 0 && (
+        <div style={{
+          position: "fixed",
+          left: bhExpanding.x,
+          top: bhExpanding.y,
+          width: 5000, height: 5000,
+          marginLeft: -2500, marginTop: -2500,
+          borderRadius: "50%",
+          background: "#000",
+          zIndex: 99998,
+          animation: "bh-grow 1.5s ease forwards",
+          pointerEvents: "none",
+        }} />
+      )}
       {endPhase >= 1 && (
         <div style={{
           position: "fixed", inset: 0,
           zIndex: 99999,
           pointerEvents: "all",
           background: "#000",
-          animation: endPhase === 1 ? "end-blackout 0.4s ease forwards" : undefined,
         }}>
-          {endPhase === 1 && (
-            <canvas
-              ref={canvasRef}
-              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-            />
-          )}
-          {endPhase === 2 && (
-            <div style={{
-              position: "absolute", top: "50%", left: "50%",
-              transform: "translate(-50%, -50%)",
-              fontFamily: "var(--font-geist-mono, monospace)",
-              fontSize: 17,
-              letterSpacing: "0.4em",
-              color: "rgba(255,255,255,0.9)",
-              whiteSpace: "nowrap",
-              textShadow: "0 0 20px rgba(255,255,255,0.5), 0 0 60px rgba(255,255,255,0.15)",
-              animation: "end-thankyou 2s ease forwards",
-            }}>
-              thank you!
-            </div>
-          )}
           {endPhase === 3 && (
             <>
               <div style={{
